@@ -21,8 +21,8 @@ the Netherlands?**
 
 ## Data
 
-The analysis uses data from the European Social Survey Round 10 and focuses on
-respondents from the Netherlands.
+The analysis uses data from Round 10 of the European Social Survey (ESS) and focuses on
+respondents from the Netherlands. (The raw dataset is not included in this repository.)
 
 Attitudes toward immigration are measured using a composite index based on
 three survey items assessing perceptions of immigration's:
