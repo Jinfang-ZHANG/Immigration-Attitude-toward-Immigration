@@ -1,5 +1,9 @@
 # Education and Attitudes Toward Immigration in the Netherlands
 
+## View the project
+
+[View the rendered analysis] [https://jinfang-zhang.github.io/Immigration-Attitude-toward-Immigration/](https://jinfang-zhang.github.io/Immigration-Attitude-toward-Immigration/)
+
 ## About
 
 This project is based on a course assignment from my MSc in Social Scientific Data Analysis at Lund University.
@@ -33,8 +37,8 @@ Because the data are cross-sectional and observational, the results should be in
 
 ## Files
 
-- `Project.Rmd` — source file
-- `Project.html` — rendered analysis
+- `Project.Rmd` — R Markdown source file
+- `index.html` — rendered analysis
 
 ## Tools
 
