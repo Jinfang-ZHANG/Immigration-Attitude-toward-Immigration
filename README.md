@@ -2,7 +2,7 @@
 
 ## View the project
 
-[View the rendered analysis] [https://jinfang-zhang.github.io/Immigration-Attitude-toward-Immigration/](https://jinfang-zhang.github.io/Immigration-Attitude-toward-Immigration/)
+View the full analysis: https://jinfang-zhang.github.io/education_and_immigration_attitudes/
 
 ## About
 
