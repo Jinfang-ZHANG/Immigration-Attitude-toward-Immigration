@@ -1,0 +1,563 @@
+---
+title: "Education and Attitudes Toward Immigration in the Netherlands"
+author: "Jinfang Zhang"
+date: "2025"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    code_folding: hide
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+library(tidyverse)
+library(psych)
+library(car)
+library(modelsummary)
+library(lmtest)
+library(sandwich)
+library(broom)
+```
+
+# Overview
+
+## Background
+
+Attitudes toward immigration vary substantially across individuals and
+are shaped by a range of social, economic, and demographic factors.
+
+Education is frequently associated with more positive attitudes toward
+immigration, making it a useful focal predictor for examining variation
+in immigration attitudes.
+
+This project examines the relationship between education and attitudes
+toward immigration in the Netherlands using data from Round 10 of the
+European Social Survey (ESS).
+
+## Research Question
+
+**To what extent is education associated with attitudes toward
+immigration in the Netherlands?**
+
+The analysis investigates whether respondents with more years of
+education tend to report more positive attitudes toward immigration and
+whether this association remains after accounting for sociodemographic,
+economic, and attitudinal characteristics.
+
+The project demonstrates an end-to-end quantitative analysis workflow in
+R, including data cleaning, composite index construction, reliability
+analysis, exploratory visualization, multiple linear regression, robust
+check, and statistical visualization.
+
+# Analysis
+
+## Data and Variable Construction
+
+The analysis uses ESS Round 10 data and focuses on respondents from the
+Netherlands.
+
+Attitudes toward immigration are measured using three survey items
+assessing perceptions of immigration's:
+
+1.  economic impact
+2.  cultural impact
+3.  overall impact on the country
+
+Higher values indicate more positive attitudes toward immigration.
+
+The focal independent variable is years of education. Additional
+variables include age, gender, country of birth, perceived household
+income, religiosity, household income, cultural values, and social
+trust.
+
+### Import Data
+
+The raw ESS dataset is not included in this repository.
+
+```{r import-data}
+ESS10 <- read_csv("ESS10.csv")
+```
+
+### Select Netherlands Sample
+
+```{r select-data}
+ess_nl <- ESS10 %>%
+  filter(cntry == "NL") %>%
+  select(
+    age = agea,
+    gender = gndr,
+    born_country = brncntr,
+    education = eduyrs,
+    household_income = hinctnta,
+    religiosity = rlgdgr,
+    immigration_economic = imbgeco,
+    immigration_cultural = imueclt,
+    immigration_country = imwbcnt,
+    social_trust = ppltrst,
+    cultural_value = imptrad,
+    perceived_income = hincfel
+  )
+```
+
+### Data Cleaning
+
+Special ESS response codes representing responses such as *Don't know*,
+*Refusal*, and *No answer* are recoded as missing values.
+
+```{r clean-data}
+ess_nl_clean <- ess_nl %>%
+  mutate(
+    age = na_if(age, 999),
+
+    gender = if_else(
+      gender %in% c(7, 8, 9),
+      NA_real_,
+      as.numeric(gender)
+    ),
+
+    born_country = if_else(
+      born_country %in% c(7, 8, 9),
+      NA_real_,
+      as.numeric(born_country)
+    ),
+
+    education = if_else(
+      education %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(education)
+    ),
+
+    household_income = if_else(
+      household_income %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(household_income)
+    ),
+
+    religiosity = if_else(
+      religiosity %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(religiosity)
+    ),
+
+    immigration_economic = if_else(
+      immigration_economic %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(immigration_economic)
+    ),
+
+    immigration_cultural = if_else(
+      immigration_cultural %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(immigration_cultural)
+    ),
+
+    immigration_country = if_else(
+      immigration_country %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(immigration_country)
+    ),
+
+    social_trust = if_else(
+      social_trust %in% c(77, 88, 99),
+      NA_real_,
+      as.numeric(social_trust)
+    ),
+
+    cultural_value = if_else(
+      cultural_value %in% c(7, 8, 9),
+      NA_real_,
+      as.numeric(cultural_value)
+    ),
+
+    perceived_income = if_else(
+      perceived_income %in% c(7, 8, 9),
+      NA_real_,
+      as.numeric(perceived_income)
+    )
+  )
+```
+
+### Construct Immigration Attitude Index
+
+```{r construct-index}
+analysis_data <- ess_nl_clean %>%
+  mutate(
+    gender = factor(
+      gender,
+      levels = c(1, 2),
+      labels = c("Male", "Female")
+    ),
+
+    born_country = factor(
+      born_country,
+      levels = c(1, 2),
+      labels = c(
+        "Born in Netherlands",
+        "Born outside Netherlands"
+      )
+    ),
+
+    immigration_attitude = rowMeans(
+      across(
+        c(
+          immigration_economic,
+          immigration_cultural,
+          immigration_country
+        )
+      ),
+      na.rm = FALSE
+    )
+  ) %>%
+  filter(
+    education <= 21 | is.na(education)
+  )
+```
+
+### Reliability
+
+Cronbach's alpha is used to assess the internal consistency of the three
+immigration-attitude items.
+
+```{r reliability}
+attitude_items <- analysis_data %>%
+  select(
+    immigration_economic,
+    immigration_cultural,
+    immigration_country
+  )
+
+alpha_result <- psych::alpha(attitude_items)
+
+alpha_result$total$raw_alpha
+```
+
+The three items show acceptable internal consistency (**Cronbach's α ≈
+0.78**) and are therefore combined into a composite index.
+
+## Exploratory Analysis
+
+Because years of education are recorded as integer values, jittering is
+used to reduce overplotting.
+
+```{r focal-relationship}
+p_relationship <- ggplot(
+  analysis_data,
+  aes(
+    x = education,
+    y = immigration_attitude
+  )
+) +
+  geom_jitter(
+    width = 0.18,
+    height = 0.08,
+    alpha = 0.18,
+    size = 1.6,
+    colour = "#526D82"
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    colour = "#C45A45",
+    fill = "#E9B4A7",
+    linewidth = 1.2,
+    alpha = 0.25
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 21, 3)
+  ) +
+  scale_y_continuous(
+    breaks = 0:10,
+    limits = c(0, 10)
+  ) +
+  labs(
+    title =
+      "Education Is Positively Associated With Immigration Attitudes",
+    x = "Years of education",
+    y = "Immigration attitude index",
+  ) +
+  theme_minimal()
+
+p_relationship
+```
+
+The exploratory relationship is positive: respondents with more years of
+education tend to report more favorable attitudes toward immigration.
+
+## Regression Analysis
+
+To ensure that coefficient changes across model specifications are not
+driven by changes in sample composition, all regression models are
+estimated using the same complete-case sample.
+
+```{r regression-sample}
+model_data <- analysis_data %>%
+  drop_na(
+    immigration_attitude,
+    education,
+    age,
+    gender,
+    born_country,
+    perceived_income,
+    religiosity,
+    household_income,
+    cultural_value,
+    social_trust
+  )
+
+nrow(model_data)
+```
+
+Three regression specifications are estimated:
+
+-   **Model 1** estimates the bivariate association between education
+    and immigration attitudes.
+-   **Model 2** introduces sociodemographic controls.
+-   **Model 3** adds economic and attitudinal predictors, including
+    social trust and cultural values.
+
+```{r regression-models}
+model_1 <- lm(
+  immigration_attitude ~ education,
+  data = model_data
+)
+
+model_2 <- lm(
+  immigration_attitude ~
+    education +
+    age +
+    gender +
+    born_country +
+    perceived_income +
+    religiosity,
+  data = model_data
+)
+
+model_3 <- lm(
+  immigration_attitude ~
+    education +
+    age +
+    gender +
+    born_country +
+    perceived_income +
+    religiosity +
+    household_income +
+    cultural_value +
+    social_trust,
+  data = model_data
+)
+```
+
+### Model Comparison
+
+```{r model-comparison}
+gof_map <- data.frame(
+  raw = c(
+    "nobs",
+    "r.squared",
+    "adj.r.squared"
+  ),
+  clean = c(
+    "N",
+    "R²",
+    "Adjusted R²"
+  ),
+  fmt = c(
+    0,
+    3,
+    3
+  )
+)
+
+modelsummary(
+  list(
+    "Bivariate" = model_1,
+    "Controls" = model_2,
+    "Extended" = model_3
+  ),
+  stars = TRUE,
+  statistic = "({std.error})",
+  gof_map = gof_map,
+)
+```
+
+Because all three models use the same respondents, changes in the
+education coefficient across specifications reflect changes in model
+specification rather than changes in sample composition.
+
+Education remains positively associated with immigration attitudes after
+the introduction of sociodemographic, economic, and attitudinal
+characteristics.
+
+## Coefficient Plot
+
+The coefficient plot summarizes the estimated relationships in the
+extended model and displays 95% confidence intervals.
+
+```{r coefficient-data}
+coefficient_data <- broom::tidy(
+  model_3,
+  conf.int = TRUE
+) %>%
+  dplyr::filter(
+    term != "(Intercept)"
+  ) %>%
+  dplyr::mutate(
+    term_label = dplyr::case_when(
+      term == "education" ~
+        "Education",
+
+      term == "age" ~
+        "Age",
+
+      term == "genderFemale" ~
+        "Female",
+
+      term ==
+        "born_countryBorn outside Netherlands" ~
+        "Born outside Netherlands",
+
+      term == "perceived_income" ~
+        "Perceived income difficulty",
+
+      term == "religiosity" ~
+        "Religiosity",
+
+      term == "household_income" ~
+        "Household income",
+
+      term == "cultural_value" ~
+        "Cultural value",
+
+      term == "social_trust" ~
+        "Social trust",
+
+      TRUE ~ term
+    ),
+
+    significant = if_else(
+      p.value < 0.05,
+      "Significant",
+      "Not significant"
+    )
+  )
+```
+
+```{r coefficient-plot}
+p_coefficients <- ggplot(
+  coefficient_data,
+  aes(
+    x = reorder(term_label, estimate),
+    y = estimate
+  )
+) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey55"
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = conf.low,
+      ymax = conf.high
+    ),
+    width = 0.12,
+    linewidth = 0.8,
+    colour = "grey45"
+  ) +
+  geom_point(
+    aes(
+      shape = significant
+    ),
+    size = 3,
+    colour = "#2F5D50"
+  ) +
+  coord_flip() +
+  labs(
+    title =
+      "Key Predictors of Immigration Attitudes",
+    x = NULL,
+    y = "Estimated coefficient",
+    shape = NULL,
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  )
+
+p_coefficients
+```
+
+# Model Evaluation
+
+## Robust Standard Errors
+
+HC3 heteroskedasticity-robust standard errors are calculated for the
+extended model.
+
+```{r robust-se}
+robust_results <- lmtest::coeftest(
+  model_3,
+  vcov = sandwich::vcovHC(
+    model_3,
+    type = "HC3"
+  )
+)
+
+robust_results
+```
+
+The substantive conclusions remain unchanged when HC3 robust standard
+errors are used.
+
+## Multicollinearity
+
+```{r multicollinearity}
+vif_results <- car::vif(model_3)
+
+vif_results
+```
+
+VIF values are low, indicating no meaningful multicollinearity among the
+predictors.
+
+# Key Findings
+
+-   Higher levels of education are consistently associated with more
+    positive attitudes toward immigration across the regression
+    specifications.
+
+-   The association remains statistically significant after accounting
+    for sociodemographic, economic, and attitudinal characteristics.
+
+-   Social trust and cultural values are also positively associated with
+    immigration attitudes in the extended model.
+
+-   The main conclusions remain substantively unchanged when HC3 robust
+    standard errors are used.
+
+-   VIF values indicate no meaningful multicollinearity among
+    predictors.
+
+Because all regression specifications use the same complete-case sample,
+changes across models are not driven by differences in sample
+composition.
+
+The models explain a modest proportion of variation in immigration
+attitudes, which is reasonable for an individual-level social attitude
+outcome influenced by many social and contextual factors.
+
+Because the analysis uses **cross-sectional observational survey data**,
+the results should be interpreted as statistical associations rather
+than causal effects.
